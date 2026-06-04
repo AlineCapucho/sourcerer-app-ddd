@@ -155,8 +155,41 @@ class DefaultFactCalculationService(
                 fsLineNum[email].toString(), authorEmail))
             fs.add(Fact(repoRehash, FactCodes.LINE_LEN_AVG, 0,
                 fsLineLenAvg[email].toString(), authorEmail))
+
+            // Histogram: commits per lines
+            addCommitsPerLinesFacts(fs, repoRehash, fsLinesPerCommits[email]!!, authorEmail)
         }
         return fs
+    }
+
+    private fun addCommitsPerLinesFacts(
+        fs: MutableList<Fact>,
+        repoRehash: String,
+        linesPerCommits: Array<Int>,
+        authorEmail: Email
+    ) {
+        if (linesPerCommits.isEmpty()) return
+        var max = linesPerCommits[0]
+        var min = linesPerCommits[0]
+        for (lines in linesPerCommits) {
+            if (lines > max) max = lines
+            if (lines < min) min = lines
+        }
+        val numBins = Math.min(10, max - min + 1)
+        if (numBins <= 0) return
+        val binSize = (max - min + 1) / numBins.toDouble()
+        val bins = Array(numBins) { 0 }
+        for (numLines in linesPerCommits) {
+            if (numLines == 0) continue
+            val binId = Math.floor((numLines - min) / binSize).toInt()
+            bins[binId]++
+        }
+        for ((binId, numCommits) in bins.withIndex()) {
+            if (numCommits == 0) continue
+            val numLines = Math.floor(min + binId * binSize).toInt()
+            fs.add(Fact(repoRehash, FactCodes.COMMIT_NUM_TO_LINE_NUM, numLines,
+                numCommits.toString(), authorEmail))
+        }
     }
 
     private fun calcIncAvg(prev: Double, element: Double, count: Long): Double {

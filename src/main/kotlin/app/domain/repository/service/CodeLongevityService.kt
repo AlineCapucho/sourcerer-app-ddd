@@ -12,6 +12,14 @@ import app.domain.repository.valueobject.Fact
 interface CodeLongevityService {
     /**
      * Calcula fatos de longevidade para o repositório.
+     *
+     * @param repoRehash Hash do repositório para identificação dos fatos.
+     * @param repoPath Caminho do repositório Git no disco.
+     * @param emails Conjunto de emails dos autores a serem considerados.
      */
-    fun calculateLongevityFacts(repoRehash: String): List<Fact>
+    fun calculateLongevityFacts(
+        repoRehash: String,
+        repoPath: String,
+        emails: HashSet<String>
+    ): List<Fact>
 }

@@ -132,6 +132,13 @@ class HashRepositoryUseCase(
                             commit.coauthors.forEach { coauthor ->
                                 processedCommits.add(commit.copyForCoauthor(coauthor))
                             }
+
+                            // Send in batches of 1000 to avoid accumulating
+                            // all commits in memory (matches original buffering).
+                            if (processedCommits.size >= 1000) {
+                                commitRepository.saveAll(processedCommits.toList())
+                                processedCommits.clear()
+                            }
                         }
 
                         // Acumular fatos
@@ -145,11 +152,10 @@ class HashRepositoryUseCase(
                 onError = onError,
                 onComplete = {
                     try {
-                        // Enviar commits processados em batches
+                        // Enviar commits restantes
                         if (commitHasherEnabled && processedCommits.isNotEmpty()) {
-                            processedCommits.chunked(1000).forEach { batch ->
-                                commitRepository.saveAll(batch)
-                            }
+                            commitRepository.saveAll(processedCommits.toList())
+                            processedCommits.clear()
                         }
 
                         // Calcular e enviar fatos
@@ -211,6 +217,23 @@ class HashRepositoryUseCase(
                             }
                         }
                     )
+                } catch (e: Throwable) {
+                    errors.add(e)
+                }
+            }
+
+            // 10.5. Code Longevity
+            if (longevityEnabled) {
+                try {
+                    val codeLongevityService = serviceFactory.createCodeLongevityService()
+                    val longevityFacts = codeLongevityService.calculateLongevityFacts(
+                        repoRehash = repoWithHistory.rehash,
+                        repoPath = localRepo.path,
+                        emails = filteredEmails.toHashSet()
+                    )
+                    if (longevityFacts.isNotEmpty()) {
+                        factRepository.saveAll(longevityFacts)
+                    }
                 } catch (e: Throwable) {
                     errors.add(e)
                 }

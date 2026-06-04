@@ -10,8 +10,4 @@ data class AuthorDistance(
     val repoRehash: String,
     val email: Email,
     val score: Double
-) {
-    init {
-        require(score >= 0.0) { "Score must be non-negative" }
-    }
-}
+)

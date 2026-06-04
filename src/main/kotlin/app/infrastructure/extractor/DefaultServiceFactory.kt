@@ -2,6 +2,7 @@ package app.infrastructure.extractor
 
 import app.application.usecase.ServiceFactory
 import app.domain.repository.service.AuthorDistanceService
+import app.domain.repository.service.CodeLongevityService
 import app.domain.repository.service.CommitExtractionService
 import app.domain.repository.service.FactCalculationService
 import app.domain.repository.service.MetaHashingService
@@ -39,5 +40,9 @@ class DefaultServiceFactory : ServiceFactory {
 
     override fun createMetaHashingService(): MetaHashingService {
         return DefaultMetaHashingService()
+    }
+
+    override fun createCodeLongevityService(): CodeLongevityService {
+        return DefaultCodeLongevityService()
     }
 }

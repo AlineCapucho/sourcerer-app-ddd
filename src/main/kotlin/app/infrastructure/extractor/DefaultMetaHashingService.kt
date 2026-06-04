@@ -9,6 +9,7 @@ import app.domain.shared.valueobject.Email
 /**
  * Implementação do MetaHashingService.
  * Calcula fatos de metadados como tamanho do time e share de commits.
+ * Usa deduplicação de autores baseada em similaridade de Jaccard com 3-grams.
  */
 class DefaultMetaHashingService : MetaHashingService {
 
@@ -20,50 +21,83 @@ class DefaultMetaHashingService : MetaHashingService {
     ): List<Fact> {
         val facts = mutableListOf<Fact>()
 
-        // Team size fact
-        val teamSize = authors.size
-        userEmails.forEach { email ->
+        val otherAuthors = authors.filter { author ->
+            !userEmails.contains(author.email.value())
+        }
+        val isUserAuthor = otherAuthors.size < authors.size
+        val numAuthors = getAuthorsNum(otherAuthors) + if (isUserAuthor) 1 else 0
+
+        // REPO_TEAM_SIZE (repo-level fact, no specific author)
+        facts.add(Fact(
+            repoRehash = repoRehash,
+            code = FactCodes.REPO_TEAM_SIZE,
+            key = 0,
+            value = numAuthors.toString(),
+            authorEmail = Email("")
+        ))
+
+        // COMMIT_SHARE_REPO_AVG (repo-level fact, no specific author)
+        val numAllCommits = commitsCount.values.fold(0) { acc, i -> acc + i }
+        val avgCommits = Math.round(numAllCommits.toDouble() / numAuthors).toInt()
+        facts.add(Fact(
+            repoRehash = repoRehash,
+            code = FactCodes.COMMIT_SHARE_REPO_AVG,
+            key = 0,
+            value = avgCommits.toString(),
+            authorEmail = Email("")
+        ))
+
+        // COMMIT_SHARE (absolute count for user)
+        if (isUserAuthor) {
+            val numUserCommits = userEmails
+                .mapNotNull { email -> commitsCount[email] }
+                .fold(0) { acc, i -> acc + i }
+            val userEmail = userEmails.first()
             facts.add(Fact(
                 repoRehash = repoRehash,
-                code = FactCodes.REPO_TEAM_SIZE,
+                code = FactCodes.COMMIT_SHARE,
                 key = 0,
-                value = teamSize.toString(),
-                authorEmail = Email(email)
+                value = numUserCommits.toString(),
+                authorEmail = Email(userEmail)
             ))
         }
 
-        // Commit share facts
-        val totalCommits = commitsCount.values.sum()
-        if (totalCommits > 0) {
-            userEmails.forEach { userEmail ->
-                val userCommits = commitsCount.getOrDefault(userEmail, 0)
-                if (userCommits > 0) {
-                    val share = userCommits.toDouble() / totalCommits
-                    facts.add(Fact(
-                        repoRehash = repoRehash,
-                        code = FactCodes.COMMIT_SHARE,
-                        key = 0,
-                        value = share.toString(),
-                        authorEmail = Email(userEmail)
-                    ))
-                }
+        return facts
+    }
 
-                // Colleagues fact
-                val colleagues = commitsCount.keys
-                    .filter { it != userEmail }
-                    .size
-                if (colleagues > 0) {
-                    facts.add(Fact(
-                        repoRehash = repoRehash,
-                        code = FactCodes.COLLEAGUES,
-                        key = 0,
-                        value = colleagues.toString(),
-                        authorEmail = Email(userEmail)
-                    ))
-                }
+    /**
+     * Deduplica autores usando similaridade de Jaccard com 3-grams.
+     * Autores com Jaccard >= 0.3 nos nomes OU prefixos de email são
+     * considerados a mesma pessoa.
+     */
+    private fun getAuthorsNum(authors: List<Author>): Int {
+        val names = authors.map { it.name }
+        val emails = authors.map { it.email.value().split("@")[0] }
+        val namesQgrams = names.map { getThreegrams(it) }
+        val emailsQgrams = emails.map { getThreegrams(it) }
+        val results = Array(authors.size) { Array(authors.size) { 0 } }
+        for (i in 0..authors.size - 2) {
+            for (j in i + 1 until authors.size) {
+                if (isSameAuthor(namesQgrams[i], namesQgrams[j])) results[j][i] = 1
+                if (isSameAuthor(emailsQgrams[i], emailsQgrams[j])) results[j][i] = 1
             }
         }
+        return results.filter { it.sum() == 0 }.size
+    }
 
-        return facts
+    private fun isSameAuthor(first: Set<String>, second: Set<String>): Boolean {
+        val intersectionSize = first.intersect(second).size
+        val unionSize = first.union(second).size
+        if (unionSize == 0) return false
+        val jaccardValue = intersectionSize.toFloat() / unionSize
+        return jaccardValue >= 0.3
+    }
+
+    private fun getThreegrams(str: String): Set<String> {
+        val threegrams = mutableSetOf<String>()
+        for (i in 0..str.length - 3) {
+            threegrams.add(listOf(str[i], str[i + 1], str[i + 2]).joinToString(""))
+        }
+        return threegrams
     }
 }

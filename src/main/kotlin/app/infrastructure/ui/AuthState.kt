@@ -31,7 +31,7 @@ class AuthState(private val context: ConsoleUi) : ConsoleState {
 
     override fun next() {
         if (authorized) {
-            context.changeState(UpdateRepoState(context))
+            context.changeState(ListRepoState(context))
         } else {
             context.changeState(CloseState())
         }
